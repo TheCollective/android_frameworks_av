@@ -82,7 +82,7 @@ StagefrightRecorder::StagefrightRecorder()
       mOutputFd(-1),
       mAudioSource(AUDIO_SOURCE_CNT),
       mVideoSource(VIDEO_SOURCE_LIST_END),
-      mStarted(false), mSurfaceMediaSource(NULL),
+      mStarted(false), mPaused(false), mSurfaceMediaSource(NULL),
       mCaptureTimeLapse(false) {
 
     ALOGV("Constructor");
@@ -453,6 +453,11 @@ status_t StagefrightRecorder::setParamMaxFileSizeBytes(int64_t bytes) {
         ALOGW("Target file size (%lld bytes) is too small to be respected", bytes);
     }
 
+    if (bytes >= 0xffffffffLL) {
+        ALOGW("Target file size (%lld bytes) too larger than supported, clip to 4GB", bytes);
+        bytes = 0xffffffffLL;
+    }
+
     mMaxFileSizeBytes = bytes;
     return OK;
 }
@@ -776,20 +781,41 @@ status_t StagefrightRecorder::setClientName(const String16& clientName) {
 }
 
 status_t StagefrightRecorder::prepare() {
-    return OK;
+  ALOGV(" %s E", __func__ );
+
+  if(mVideoSource != VIDEO_SOURCE_LIST_END && mVideoEncoder != VIDEO_ENCODER_LIST_END && mVideoHeight && mVideoWidth &&             /*Video recording*/
+         (mMaxFileDurationUs <=0 ||             /*Max duration is not set*/
+         (mVideoHeight * mVideoWidth < 720 * 1280 && mMaxFileDurationUs > 30*60*1000*1000) ||
+         (mVideoHeight * mVideoWidth >= 720 * 1280 && mMaxFileDurationUs > 10*60*1000*1000))) {
+    /*Above Check can be further optimized for lower resolutions to reduce file size*/
+    ALOGV("File is huge so setting 64 bit file offsets");
+    setParam64BitFileOffset(true);
+  }
+  ALOGV(" %s X", __func__ );
+  return OK;
 }
 
 status_t StagefrightRecorder::start() {
     CHECK_GE(mOutputFd, 0);
+    status_t status = OK;
 
     // Get UID here for permission checking
     mClientUid = IPCThreadState::self()->getCallingUid();
     if (mWriter != NULL) {
+        //if in Pause state, we just start the writer
+        if(mPaused){
+            int64_t startTimeUs = systemTime() / 1000;
+            sp<MetaData> meta = new MetaData;
+            meta->setInt64(kKeyTime, startTimeUs);
+
+            status = mWriter->start(meta.get());
+            ALOGV("%s: successfully re-start the writer",__FUNCTION__);
+            mPaused = false;
+            goto exit;
+        }
         ALOGE("File writer is not avaialble");
         return UNKNOWN_ERROR;
     }
-
-    status_t status = OK;
 
     switch (mOutputFormat) {
         case OUTPUT_FORMAT_DEFAULT:
@@ -832,6 +858,7 @@ status_t StagefrightRecorder::start() {
             break;
     }
 
+exit:
     if ((status == OK) && (!mStarted)) {
         mStarted = true;
 
@@ -1760,10 +1787,13 @@ status_t StagefrightRecorder::startMPEG4Recording() {
 
 status_t StagefrightRecorder::pause() {
     ALOGV("pause");
+    status_t status = OK;
     if (mWriter == NULL) {
         return UNKNOWN_ERROR;
     }
-    mWriter->pause();
+
+    status = mWriter->pause();
+    mPaused = true;
 
     if (mStarted) {
         mStarted = false;
@@ -1779,8 +1809,9 @@ status_t StagefrightRecorder::pause() {
         addBatteryData(params);
     }
 
+    ALOGV("pause returned with rc = %d", status);
 
-    return OK;
+    return status;
 }
 
 status_t StagefrightRecorder::stop() {

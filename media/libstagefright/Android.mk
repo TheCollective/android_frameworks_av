@@ -3,6 +3,10 @@ include $(CLEAR_VARS)
 
 include frameworks/av/media/libstagefright/codecs/common/Config.mk
 
+ifeq ($(BOARD_HTC_3D_SUPPORT),true)
+   LOCAL_CFLAGS += -DHTC_3D_SUPPORT
+endif
+
 LOCAL_SRC_FILES:=                         \
         ACodec.cpp                        \
         AACExtractor.cpp                  \
@@ -194,9 +198,6 @@ ifeq ($(TARGET_ENABLE_QC_AV_ENHANCEMENTS),true)
         LOCAL_C_INCLUDES += \
             $(TOP)/hardware/qcom/media/mm-core/inc
     endif
-    ifeq ($(TARGET_ENABLE_DEFAULT_SMOOTHSTREAMING),true)
-            LOCAL_CFLAGS += -DENABLE_DEFAULT_SMOOTHSTREAMING
-    endif #TARGET_ENABLE_DEAFULT_SMOOTHSTREAMING
 endif #TARGET_ENABLE_QC_AV_ENHANCEMENTS
 
 include $(BUILD_SHARED_LIBRARY)
