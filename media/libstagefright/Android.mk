@@ -43,7 +43,6 @@ LOCAL_SRC_FILES:=                         \
         NuMediaExtractor.cpp              \
         OMXClient.cpp                     \
         OMXCodec.cpp                      \
-        ExtendedCodec.cpp                 \
         OggExtractor.cpp                  \
         SampleIterator.cpp                \
         SampleTable.cpp                   \
@@ -63,28 +62,20 @@ LOCAL_SRC_FILES:=                         \
         avc_utils.cpp                     \
         mp4/FragmentedMP4Parser.cpp       \
         mp4/TrackFragment.cpp             \
-        ExtendedExtractor.cpp             \
-        QCUtils.cpp                       \
 
 LOCAL_C_INCLUDES:= \
         $(TOP)/frameworks/av/include/media/stagefright/timedtext \
         $(TOP)/frameworks/native/include/media/hardware \
-        $(TOP)/frameworks/native/include/media/openmax \
+        $(TOP)/frameworks/native/services/connectivitymanager \
         $(TOP)/external/flac/include \
         $(TOP)/external/tremolo \
-        $(TOP)/external/openssl/include
+        $(TOP)/external/openssl/include \
 
 ifneq ($(TI_CUSTOM_DOMX_PATH),)
 LOCAL_C_INCLUDES += $(TI_CUSTOM_DOMX_PATH)/omx_core/inc
 LOCAL_CPPFLAGS += -DUSE_TI_CUSTOM_DOMX
 else
 LOCAL_C_INCLUDES += $(TOP)/frameworks/native/include/media/openmax
-endif
-
-ifeq ($(BOARD_USES_STE_FMRADIO),true)
-LOCAL_SRC_FILES += \
-        FMRadioSource.cpp                 \
-        PCMExtractor.cpp
 endif
 
 ifneq ($(filter caf bfam,$(TARGET_QCOM_AUDIO_VARIANT)),)
@@ -106,7 +97,7 @@ ifneq ($(filter caf bfam,$(TARGET_QCOM_AUDIO_VARIANT)),)
         LOCAL_SRC_FILES += LPAPlayer.cpp
         LOCAL_CFLAGS += -DLEGACY_LPA
     endif
-    LOCAL_CFLAGS += -DQCOM_ENHANCED_AUDIO
+    LOCAL_CFLAGS += -DQCOM_ENHANCED_AUDIO -DUSE_LPA_MODE
 endif
 
 ifneq ($(TARGET_QCOM_MEDIA_VARIANT),)
@@ -120,7 +111,7 @@ endif
 LOCAL_SHARED_LIBRARIES := \
         libbinder \
         libcamera_client \
-        libcrypto \
+        libconnectivitymanager \
         libcutils \
         libdl \
         libdrmframework \
@@ -139,6 +130,7 @@ LOCAL_SHARED_LIBRARIES := \
         libutils \
         libvorbisidec \
         libz \
+        libpowermanager
 
 LOCAL_STATIC_LIBRARIES := \
         libstagefright_color_conversion \
@@ -149,9 +141,25 @@ LOCAL_STATIC_LIBRARIES := \
         libvpx \
         libwebm \
         libstagefright_mpeg2ts \
-        libstagefright_httplive \
         libstagefright_id3 \
         libFLAC \
+        libmedia_helper
+
+
+LOCAL_SRC_FILES += ExtendedCodec.cpp ExtendedExtractor.cpp ExtendedUtils.cpp
+
+ifeq ($(TARGET_ENABLE_QC_AV_ENHANCEMENTS),true)
+       LOCAL_CFLAGS     += -DENABLE_AV_ENHANCEMENTS
+       LOCAL_SRC_FILES  += ExtendedMediaDefs.cpp ExtendedWriter.cpp
+
+       ifneq ($(TARGET_QCOM_MEDIA_VARIANT),)
+           LOCAL_C_INCLUDES += \
+               $(TOP)/hardware/qcom/media-$(TARGET_QCOM_MEDIA_VARIANT)/mm-core/inc
+       else
+           LOCAL_C_INCLUDES += \
+               $(TOP)/hardware/qcom/media/mm-core/inc
+       endif
+endif #TARGET_ENABLE_AV_ENHANCEMENTS
 
 LOCAL_SRC_FILES += \
         chromium_http_stub.cpp
@@ -182,23 +190,15 @@ ifeq ($(BOARD_USE_TI_DUCATI_H264_PROFILE), true)
 LOCAL_CFLAGS += -DUSE_TI_DUCATI_H264_PROFILE
 endif
 
+ifdef DOLBY_UDC
+  LOCAL_CFLAGS += -DDOLBY_UDC
+endif #DOLBY_UDC
+ifdef DOLBY_UDC_MULTICHANNEL
+  LOCAL_CFLAGS += -DDOLBY_UDC_MULTICHANNEL
+endif #DOLBY_UDC_MULTICHANNEL
 LOCAL_MODULE:= libstagefright
 
 LOCAL_MODULE_TAGS := optional
-
-
-ifeq ($(TARGET_ENABLE_QC_AV_ENHANCEMENTS),true)
-    LOCAL_CFLAGS += -DENABLE_QC_AV_ENHANCEMENTS
-    LOCAL_SRC_FILES  += ExtendedWriter.cpp
-    LOCAL_SRC_FILES  += QCMediaDefs.cpp
-    ifneq ($(TARGET_QCOM_MEDIA_VARIANT),)
-        LOCAL_C_INCLUDES += \
-            $(TOP)/hardware/qcom/media-$(TARGET_QCOM_MEDIA_VARIANT)/mm-core/inc
-    else
-        LOCAL_C_INCLUDES += \
-            $(TOP)/hardware/qcom/media/mm-core/inc
-    endif
-endif #TARGET_ENABLE_QC_AV_ENHANCEMENTS
 
 include $(BUILD_SHARED_LIBRARY)
 

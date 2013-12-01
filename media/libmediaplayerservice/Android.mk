@@ -34,6 +34,7 @@ LOCAL_SHARED_LIBRARIES :=       \
     libsonivox                  \
     libstagefright              \
     libstagefright_foundation   \
+    libstagefright_httplive     \
     libstagefright_omx          \
     libstagefright_wfd          \
     libutils                    \
@@ -43,7 +44,6 @@ LOCAL_SHARED_LIBRARIES :=       \
 LOCAL_STATIC_LIBRARIES :=       \
     libstagefright_nuplayer     \
     libstagefright_rtsp         \
-    libmedia_helper             \
 
 LOCAL_C_INCLUDES :=                                                 \
     $(call include-path-for, graphics corecg)                       \
@@ -55,10 +55,10 @@ LOCAL_C_INCLUDES :=                                                 \
 
 ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
     ifneq ($(TARGET_QCOM_MEDIA_VARIANT),)
-        LOCAL_C_INCLUDES += \
+    LOCAL_C_INCLUDES += \
             $(TOP)/hardware/qcom/media-$(TARGET_QCOM_MEDIA_VARIANT)/mm-core/inc
     else
-        LOCAL_C_INCLUDES += \
+    LOCAL_C_INCLUDES += \
             $(TOP)/hardware/qcom/media/mm-core/inc
     endif
 endif
@@ -66,7 +66,7 @@ endif
 LOCAL_MODULE:= libmediaplayerservice
 
 ifeq ($(TARGET_ENABLE_QC_AV_ENHANCEMENTS),true)
-    LOCAL_CFLAGS += -DENABLE_QC_AV_ENHANCEMENTS
+    LOCAL_CFLAGS += -DENABLE_AV_ENHANCEMENTS
     LOCAL_C_INCLUDES += $(TOP)/frameworks/av/include/media
     ifneq ($(TARGET_QCOM_MEDIA_VARIANT),)
         LOCAL_C_INCLUDES += \

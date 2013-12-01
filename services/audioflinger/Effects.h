@@ -1,8 +1,7 @@
 /*
-**
-** Copyright 2012, The Android Open Source Project
 ** Copyright (c) 2013, The Linux Foundation. All rights reserved.
 ** Not a Contribution.
+** Copyright 2012, The Android Open Source Project
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -27,6 +26,10 @@
 // state changes or resource modifications. Always respect the following order
 // if multiple mutexes must be acquired to avoid cross deadlock:
 // AudioFlinger -> ThreadBase -> EffectChain -> EffectModule
+// In addition, methods that lock the AudioPolicyService mutex (getOutputForEffect(),
+// startOutput()...) should never be called with AudioFlinger or Threadbase mutex locked
+// to avoid cross deadlock with other clients calling AudioPolicyService methods that in turn
+// call AudioFlinger thus locking the same mutexes in the reverse order.
 
 // The EffectModule class is a wrapper object controlling the effect engine implementation
 // in the effect library. It prevents concurrent calls to process() and command() functions
@@ -120,10 +123,15 @@ public:
     bool             purgeHandles();
     void             lock() { mLock.lock(); }
     void             unlock() { mLock.unlock(); }
+    bool             isOffloadable() const
+                        { return (mDescriptor.flags & EFFECT_FLAG_OFFLOAD_SUPPORTED) != 0; }
+    status_t         setOffloaded(bool offloaded, audio_io_handle_t io);
+    bool             isOffloaded() const;
 #ifdef QCOM_HARDWARE
     bool             isOnLPA() { return mIsForLPA;}
     void             setLPAFlag(bool isForLPA) {mIsForLPA = isForLPA; }
 #endif
+
     void             dump(int fd, const Vector<String16>& args);
 
 protected:
@@ -138,6 +146,7 @@ protected:
 
     status_t start_l();
     status_t stop_l();
+    status_t remove_effect_from_hal_l();
 
 mutable Mutex               mLock;      // mutex for process, commands and handles list protection
     wp<ThreadBase>      mThread;    // parent thread
@@ -155,6 +164,7 @@ mutable Mutex               mLock;      // mutex for process, commands and handl
                                     // sending disable command.
     uint32_t mDisableWaitCnt;       // current process() calls count during disable period.
     bool     mSuspended;            // effect is suspended: temporarily disabled by framework
+    bool     mOffloaded;            // effect is currently offloaded to the audio DSP
 #ifdef QCOM_HARDWARE
     bool     mIsForLPA;
 #endif
@@ -322,6 +332,10 @@ public:
                                           bool enabled);
 
     void clearInputBuffer();
+
+    // At least one non offloadable effect in the chain is enabled
+    bool isNonOffloadableEnabled();
+
 
     void dump(int fd, const Vector<String16>& args);
 #ifdef QCOM_HARDWARE

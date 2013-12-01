@@ -1,8 +1,7 @@
 /*
- * Copyright (C) 2009 The Android Open Source Project
  * Copyright (c) 2009-2013, The Linux Foundation. All rights reserved.
  * Not a Contribution.
- *
+ * Copyright (C) 2009 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,7 +57,7 @@ int TunnelPlayer::mTunnelObjectsAlive = 0;
 TunnelPlayer::TunnelPlayer(
                     const sp<MediaPlayerBase::AudioSink> &audioSink, bool &initCheck,
                     AwesomePlayer *observer, bool hasVideo)
-:AudioPlayer(audioSink,observer),
+:AudioPlayer(audioSink, 0, observer),
 mPositionTimeMediaUs(-1),
 mPositionTimeRealUs(-1),
 mInternalSeeking(false),
@@ -201,7 +200,8 @@ status_t TunnelPlayer::start(bool sourceAlreadyStarted) {
         DEFAULT_AUDIOSINK_BUFFERCOUNT,
         &TunnelPlayer::AudioSinkCallback,
         this,
-        flags);
+        flags,
+        NULL);
 
     if (err != OK) {
         if (mFirstBuffer != NULL) {
@@ -284,7 +284,8 @@ void TunnelPlayer::pause(bool playPendingSamples) {
     }
 }
 
-void TunnelPlayer::resume() {
+status_t TunnelPlayer::resume() {
+    status_t err = NO_ERROR;
     Mutex::Autolock autoLock(mLock);
     ALOGV("resume: mPaused %d",mPaused);
     if ( mPaused) {
@@ -299,15 +300,15 @@ void TunnelPlayer::resume() {
         if (!mIsAudioRouted) {
             audio_output_flags_t flags = (audio_output_flags_t) (AUDIO_OUTPUT_FLAG_TUNNEL |
                                                                 AUDIO_OUTPUT_FLAG_DIRECT);
-            status_t err = mAudioSink->open(
+            err = mAudioSink->open(
                 mSampleRate, numChannels, mChannelMask, mFormat,
                 DEFAULT_AUDIOSINK_BUFFERCOUNT,
                 &TunnelPlayer::AudioSinkCallback,
                 this,
-                flags);
+                flags,
+                NULL);
             if (err != NO_ERROR) {
                 ALOGE("Audio sink open failed.");
-                return;
             }
             mIsAudioRouted = true;
         }
@@ -318,12 +319,14 @@ void TunnelPlayer::resume() {
         mExtractorCv.signal();
         ALOGV("Audio signalling extractor thread.");
     }
+    return err;
 }
 
 //static
 size_t TunnelPlayer::AudioSinkCallback(
         MediaPlayerBase::AudioSink *audioSink,
-        void *buffer, size_t size, void *cookie) {
+        void *buffer, size_t size, void *cookie,
+        MediaPlayerBase::AudioSink::cb_event_t event) {
     TunnelPlayer *me = (TunnelPlayer *)cookie;
     if(me != NULL) {
         ALOGV("postAudioEOS mSeeking %d", me->mSeeking);

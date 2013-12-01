@@ -1,7 +1,7 @@
 /*
- * Copyright (C) 2009 The Android Open Source Project
  * Copyright (c) 2009-2013, The Linux Foundation. All rights reserved.
  * Not a Contribution.
+ * Copyright (C) 2009 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ int LPAPlayer::mObjectsAlive = 0;
 LPAPlayer::LPAPlayer(
                     const sp<MediaPlayerBase::AudioSink> &audioSink, bool &initCheck,
                     AwesomePlayer *observer)
-:AudioPlayer(audioSink,observer),
+:AudioPlayer(audioSink, 0, observer),
 mPositionTimeMediaUs(-1),
 mPositionTimeRealUs(-1),
 mInternalSeeking(false),
@@ -185,7 +185,8 @@ status_t LPAPlayer::start(bool sourceAlreadyStarted) {
         DEFAULT_AUDIOSINK_BUFFERCOUNT,
         &LPAPlayer::AudioSinkCallback,
         this,
-        flags);
+        flags,
+        NULL);
 
     if (err != OK) {
         if (mFirstBuffer != NULL) {
@@ -265,8 +266,9 @@ void LPAPlayer::pause(bool playPendingSamples) {
     }
 }
 
-void LPAPlayer::resume() {
+status_t LPAPlayer::resume() {
     ALOGV("resume: mPaused %d",mPaused);
+    status_t err = NO_ERROR;
     Mutex::Autolock autoLock(mLock);
     if ( mPaused) {
         CHECK(mStarted);
@@ -279,12 +281,13 @@ void LPAPlayer::resume() {
         if (!mIsAudioRouted) {
             audio_output_flags_t flags = (audio_output_flags_t) (AUDIO_OUTPUT_FLAG_LPA |
                                                                 AUDIO_OUTPUT_FLAG_DIRECT);
-            status_t err = mAudioSink->open(
+            err = mAudioSink->open(
                 mSampleRate, mNumOutputChannels, mChannelMask, AUDIO_FORMAT_PCM_16_BIT,
                 DEFAULT_AUDIOSINK_BUFFERCOUNT,
                 &LPAPlayer::AudioSinkCallback,
                 this,
-                flags);
+                flags,
+                NULL);
             if (err != NO_ERROR) {
                 ALOGE("Audio sink open failed.");
             }
@@ -293,13 +296,16 @@ void LPAPlayer::resume() {
         mPaused = false;
         mAudioSink->start();
         mDecoderCv.signal();
+
     }
+    return err;
 }
 
 //static
 size_t LPAPlayer::AudioSinkCallback(
         MediaPlayerBase::AudioSink *audioSink,
-        void *buffer, size_t size, void *cookie) {
+        void *buffer, size_t size, void *cookie,
+        MediaPlayerBase::AudioSink::cb_event_t event) {
     if (buffer == NULL && size == AudioTrack::EVENT_UNDERRUN) {
         LPAPlayer *me = (LPAPlayer *)cookie;
         if(me->mReachedEOS == true) {

@@ -1,8 +1,7 @@
 /*
-**
-** Copyright 2007, The Android Open Source Project
 ** Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
 ** Not a Contribution.
+** Copyright 2007, The Android Open Source Project
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -25,6 +24,8 @@
 #include <limits.h>
 
 #include <common_time/cc_helper.h>
+
+#include <cutils/compiler.h>
 
 #include <media/IAudioFlinger.h>
 #include <media/IAudioFlingerClient.h>
@@ -60,6 +61,7 @@
 #include <powermanager/IPowerManager.h>
 #include <utils/List.h>
 #include <media/nbaio/NBLog.h>
+#include <private/media/AudioTrackShared.h>
 
 namespace android {
 
@@ -91,20 +93,19 @@ static const nsecs_t kDefaultStandbyTimeInNsecs = seconds(3);
 
 static uint32_t getInputChannelCount(uint32_t channels) {
     // only mono, stereo, and 5.1 are supported for input sources
-    return popcount((channels)&(AUDIO_CHANNEL_IN_STEREO|AUDIO_CHANNEL_IN_MONO
 #ifdef QCOM_HARDWARE
-                |AUDIO_CHANNEL_IN_5POINT1
+    return popcount((channels)&(AUDIO_CHANNEL_IN_STEREO|AUDIO_CHANNEL_IN_MONO|AUDIO_CHANNEL_IN_5POINT1));
+#else
+    return popcount(channels);
 #endif
-                ));
 }
-
 class AudioFlinger :
     public BinderService<AudioFlinger>,
     public BnAudioFlinger
 {
     friend class BinderService<AudioFlinger>;   // for AudioFlinger()
 public:
-    static const char* getServiceName() { return "media.audio_flinger"; }
+    static const char* getServiceName() ANDROID_API { return "media.audio_flinger"; }
 
     virtual     status_t    dump(int fd, const Vector<String16>& args);
 
@@ -120,6 +121,7 @@ public:
                                 audio_io_handle_t output,
                                 pid_t tid,
                                 int *sessionId,
+                                String8& name,
                                 status_t *status);
 #ifdef QCOM_HARDWARE
     virtual sp<IDirectTrack> createDirectTrack(
@@ -139,7 +141,7 @@ public:
                                 audio_format_t format,
                                 audio_channel_mask_t channelMask,
                                 size_t frameCount,
-                                IAudioFlinger::track_flags_t flags,
+                                IAudioFlinger::track_flags_t *flags,
                                 pid_t tid,
                                 int *sessionId,
                                 status_t *status);
@@ -174,11 +176,12 @@ public:
 
     virtual     void        registerClient(const sp<IAudioFlingerClient>& client);
 #ifdef QCOM_HARDWARE
-    virtual    status_t     deregisterClient(const sp<IAudioFlingerClient>& client);
+    virtual     status_t    deregisterClient(const sp<IAudioFlingerClient>& client);
 #endif
     virtual     size_t      getInputBufferSize(uint32_t sampleRate, audio_format_t format,
                                                audio_channel_mask_t channelMask) const;
 
+#ifdef HAVE_PRE_KITKAT_AUDIO_BLOB
     virtual audio_io_handle_t openOutput(audio_module_handle_t module,
                                          audio_devices_t *pDevices,
                                          uint32_t *pSamplingRate,
@@ -186,6 +189,16 @@ public:
                                          audio_channel_mask_t *pChannelMask,
                                          uint32_t *pLatencyMs,
                                          audio_output_flags_t flags);
+#endif
+
+    virtual audio_io_handle_t openOutput(audio_module_handle_t module,
+                                         audio_devices_t *pDevices,
+                                         uint32_t *pSamplingRate,
+                                         audio_format_t *pFormat,
+                                         audio_channel_mask_t *pChannelMask,
+                                         uint32_t *pLatencyMs,
+                                         audio_output_flags_t flags,
+                                         const audio_offload_info_t *offloadInfo);
 
     virtual audio_io_handle_t openDuplicateOutput(audio_io_handle_t output1,
                                                   audio_io_handle_t output2);
@@ -239,14 +252,12 @@ public:
     virtual status_t moveEffects(int sessionId, audio_io_handle_t srcOutput,
                         audio_io_handle_t dstOutput);
 
-#ifdef QCOM_FM_ENABLED
-    virtual status_t setFmVolume(float volume);
-#endif
-
     virtual audio_module_handle_t loadHwModule(const char *name);
 
     virtual uint32_t getPrimaryOutputSamplingRate();
     virtual size_t getPrimaryOutputFrameCount();
+
+    virtual status_t setLowRamDevice(bool isLowRamDevice);
 
     virtual     status_t    onTransact(
                                 uint32_t code,
@@ -318,7 +329,7 @@ private:
 
                 bool        btNrecIsOff() const { return mBtNrecIsOff; }
 
-                            AudioFlinger();
+                            AudioFlinger() ANDROID_API;
     virtual                 ~AudioFlinger();
 
     // call in any IAudioFlinger method that accesses mPrimaryHardwareDev
@@ -399,7 +410,9 @@ private:
     class PlaybackThread;
     class MixerThread;
     class DirectOutputThread;
+    class OffloadThread;
     class DuplicatingThread;
+    class AsyncCallbackThread;
     class Track;
     class RecordTrack;
     class EffectModule;
@@ -444,8 +457,13 @@ private:
                                              int64_t pts);
         virtual status_t    setMediaTimeTransform(const LinearTransform& xform,
                                                   int target);
+        virtual status_t    setParameters(const String8& keyValuePairs);
+        virtual status_t    getTimestamp(AudioTimestamp& timestamp);
+        virtual void        signal(); // signal playback thread for a change in control block
+
         virtual status_t onTransact(
             uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags);
+
     private:
         const sp<PlaybackThread::Track> mTrack;
     };
@@ -466,6 +484,7 @@ private:
         // for use from destructor
         void                stop_nonvirtual();
     };
+
 
               PlaybackThread *checkPlaybackThread_l(audio_io_handle_t output) const;
               MixerThread *checkMixerThread_l(audio_io_handle_t output) const;
@@ -606,6 +625,9 @@ private:
                 void        removeClient_l(pid_t pid);
                 void        removeNotificationClient(pid_t pid);
 
+                bool isNonOffloadableGlobalEffectEnabled_l();
+                void onNonOffloadableGlobalEffectEnable();
+
     class AudioHwDevice {
     public:
         enum Flags {
@@ -644,11 +666,12 @@ private:
     struct AudioStreamOut {
         AudioHwDevice* const audioHwDev;
         audio_stream_out_t* const stream;
+        audio_output_flags_t flags;
 
         audio_hw_device_t* hwDev() const { return audioHwDev->hwDevice(); }
 
-        AudioStreamOut(AudioHwDevice *dev, audio_stream_out_t *out) :
-            audioHwDev(dev), stream(out) {}
+        AudioStreamOut(AudioHwDevice *dev, audio_stream_out_t *out, audio_output_flags_t flags) :
+            audioHwDev(dev), stream(out), flags(flags) {}
     };
 
     struct AudioStreamIn {
@@ -716,9 +739,6 @@ private:
         AUDIO_HW_SET_MIC_MUTE,          // set_mic_mute
         AUDIO_HW_SET_VOICE_VOLUME,      // set_voice_volume
         AUDIO_HW_SET_PARAMETER,         // set_parameters
-#ifdef QCOM_FM_ENABLED
-        AUDIO_SET_FM_VOLUME,
-#endif
         AUDIO_HW_GET_INPUT_BUFFER_SIZE, // get_input_buffer_size
         AUDIO_HW_GET_MASTER_VOLUME,     // get_master_volume
         AUDIO_HW_GET_PARAMETER,         // get_parameters
@@ -747,7 +767,6 @@ private:
                 DefaultKeyedVector<audio_io_handle_t, AudioSessionDescriptor *> mDirectAudioTracks;
                 // protected by mLock
                 volatile bool                       mIsEffectConfigChanged;
-                int                                 mA2DPHandle; // Handle to notify connection status
 #endif
                 Vector<AudioSessionRef*> mAudioSessionRefs;
 #ifdef QCOM_HARDWARE
@@ -772,12 +791,11 @@ private:
     status_t    closeOutput_nonvirtual(audio_io_handle_t output);
     status_t    closeInput_nonvirtual(audio_io_handle_t input);
 
-// do not use #ifdef here, since AudioFlinger.h is included by more than one module
-//#ifdef TEE_SINK
+#ifdef TEE_SINK
     // all record threads serially share a common tee sink, which is re-created on format change
     sp<NBAIO_Sink>   mRecordTeeSink;
     sp<NBAIO_Source> mRecordTeeSource;
-//#endif
+#endif
 
 public:
 
@@ -802,6 +820,16 @@ public:
     static const size_t kTeeSinkTrackFramesDefault = 0x1000;
 #endif
 
+    // This method reads from a variable without mLock, but the variable is updated under mLock.  So
+    // we might read a stale value, or a value that's inconsistent with respect to other variables.
+    // In this case, it's safe because the return value isn't used for making an important decision.
+    // The reason we don't want to take mLock is because it could block the caller for a long time.
+    bool    isLowRamDevice() const { return mIsLowRamDevice; }
+
+private:
+    bool    mIsLowRamDevice;
+    bool    mIsDeviceTypeKnown;
+    nsecs_t mGlobalEffectEnableTime;  // when a global effect was last enabled
 };
 
 #undef INCLUDING_FROM_AUDIOFLINGER_H

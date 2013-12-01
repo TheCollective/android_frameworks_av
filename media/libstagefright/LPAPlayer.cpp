@@ -61,7 +61,7 @@ bool LPAPlayer::mLpaInProgress = false;
 LPAPlayer::LPAPlayer(
                     const sp<MediaPlayerBase::AudioSink> &audioSink, bool &initCheck,
                     AwesomePlayer *observer)
-:AudioPlayer(audioSink,observer),
+ :AudioPlayer(audioSink,0, observer),
 mPositionTimeMediaUs(-1),
 mPositionTimeRealUs(-1),
 mInternalSeeking(false),
@@ -117,9 +117,11 @@ LPAPlayer::~LPAPlayer() {
     }
 
     reset();
+#if 0
     if (mAudioFlinger != NULL) {
         mAudioFlinger->deregisterClient(AudioFlingerClient);
     }
+#endif
     mObjectsAlive--;
     mLpaInProgress = false;
 
@@ -164,6 +166,7 @@ void LPAPlayer::AudioFlingerLPAdecodeClient::binderDied(const wp<IBinder>& who) 
 void LPAPlayer::AudioFlingerLPAdecodeClient::ioConfigChanged(int event, audio_io_handle_t ioHandle, const void *param2) {
     ALOGV("ioConfigChanged() event %d", event);
 
+#if 0
     if (event != AudioSystem::A2DP_OUTPUT_STATE) {
         return;
     }
@@ -194,6 +197,7 @@ void LPAPlayer::AudioFlingerLPAdecodeClient::ioConfigChanged(int event, audio_io
         }
         break;
     }
+#endif
     ALOGV("ioConfigChanged Out");
 
 }
@@ -357,7 +361,7 @@ void LPAPlayer::pause(bool playPendingSamples) {
     }
 }
 
-void LPAPlayer::resume() {
+status_t LPAPlayer::resume() {
     ALOGV("resume: mPaused %d",mPaused);
     if ( mPaused) {
         CHECK(mStarted);
@@ -378,12 +382,14 @@ void LPAPlayer::resume() {
         mTimeStarted = nanoseconds_to_microseconds(systemTime(SYSTEM_TIME_MONOTONIC));
         pthread_cond_signal(&decoder_cv);
     }
+    return NO_ERROR;
 }
 
 //static
 size_t LPAPlayer::AudioSinkCallback(
         MediaPlayerBase::AudioSink *audioSink,
-        void *buffer, size_t size, void *cookie) {
+        void *buffer, size_t size, void *cookie,
+        MediaPlayerBase::AudioSink::cb_event_t event) {
     if (buffer == NULL && size == AudioTrack::EVENT_UNDERRUN) {
         LPAPlayer *me = (LPAPlayer *)cookie;
         me->mReachedEOS = true;
@@ -747,9 +753,10 @@ status_t  LPAPlayer::setupAudioSink()
         err = mAudioSink->open(
             mSampleRate, numChannels, mChannelMask, AUDIO_FORMAT_PCM_16_BIT,
             DEFAULT_AUDIOSINK_BUFFERCOUNT,
-            &LPAPlayer::AudioCallback,
+            &LPAPlayer::AudioSinkCallback,
             this,
-            (audio_output_flags_t)0);
+            (audio_output_flags_t)0,
+            NULL);
         if (err != NO_ERROR){
             ALOGE("setupAudioSink:Audio sink open failed.");
         }
@@ -785,7 +792,8 @@ status_t  LPAPlayer::setupAudioSink()
             DEFAULT_AUDIOSINK_BUFFERCOUNT,
             &LPAPlayer::AudioSinkCallback,
             this,
-            (audio_output_flags_t)(AUDIO_OUTPUT_FLAG_LPA | AUDIO_OUTPUT_FLAG_DIRECT));
+            (audio_output_flags_t)(AUDIO_OUTPUT_FLAG_LPA | AUDIO_OUTPUT_FLAG_DIRECT),
+            NULL);
         if (err != NO_ERROR){
             ALOGE("setupAudioSink:Audio sink open failed.");
         }

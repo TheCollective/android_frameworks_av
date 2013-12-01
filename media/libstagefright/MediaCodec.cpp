@@ -31,9 +31,13 @@
 #include <media/stagefright/foundation/hexdump.h>
 #include <media/stagefright/ACodec.h>
 #include <media/stagefright/BufferProducerWrapper.h>
+#include <media/stagefright/MediaCodecList.h>
 #include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/stagefright/MetaData.h>
+#ifdef QCOM_HARDWARE
+#include <media/stagefright/ExtendedCodec.h>
+#endif
 #include <media/stagefright/NativeWindowWrapper.h>
 
 #include "include/avc_utils.h"
@@ -104,8 +108,24 @@ status_t MediaCodec::init(const char *name, bool nameIsType, bool encoder) {
     bool needDedicatedLooper = false;
     if (nameIsType && !strncasecmp(name, "video/", 6)) {
         needDedicatedLooper = true;
-    } else if (!nameIsType && !strncmp(name, "OMX.TI.DUCATI1.VIDEO.", 21)) {
-        needDedicatedLooper = true;
+    } else {
+        AString tmp = name;
+        if (tmp.endsWith(".secure")) {
+            tmp.erase(tmp.size() - 7, 7);
+        }
+        const MediaCodecList *mcl = MediaCodecList::getInstance();
+        ssize_t codecIdx = mcl->findCodecByName(tmp.c_str());
+        if (codecIdx >= 0) {
+            Vector<AString> types;
+            if (mcl->getSupportedTypes(codecIdx, &types) == OK) {
+                for (int i = 0; i < types.size(); i++) {
+                    if (types[i].startsWith("video/")) {
+                        needDedicatedLooper = true;
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     if (needDedicatedLooper) {
@@ -1397,6 +1417,20 @@ void MediaCodec::extractCSD(const sp<AMessage> &format) {
         mCSD.push_back(csd);
         ++i;
     }
+
+#ifdef QCOM_HARDWARE
+    sp<ABuffer> extendedCSD = ExtendedCodec::getRawCodecSpecificData(format);
+    if (extendedCSD != NULL) {
+        ALOGV("pushing extended CSD of size %d", extendedCSD->size());
+        mCSD.push_back(extendedCSD);
+    }
+
+    sp<ABuffer> aacCSD = ExtendedCodec::getAacCodecSpecificData(format);
+    if (aacCSD != NULL) {
+        ALOGV("pushing AAC CSD of size %d", aacCSD->size());
+        mCSD.push_back(aacCSD);
+    }
+#endif
 
     ALOGV("Found %u pieces of codec specific data.", mCSD.size());
 }

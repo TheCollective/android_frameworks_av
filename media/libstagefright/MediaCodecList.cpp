@@ -27,6 +27,9 @@
 #include <utils/threads.h>
 
 #include <libexpat/expat.h>
+#ifdef QCOM_HARDWARE
+#include "include/ExtendedUtils.h"
+#endif
 
 namespace android {
 
@@ -63,7 +66,15 @@ MediaCodecList::MediaCodecList()
         addMediaCodec(true /* encoder */, "AACEncoder", "audio/mp4a-latm");
 
         addMediaCodec(
-                false /* encoder */, "OMX.google.raw.decoder", "audio/raw");
+                     false /* encoder */, "OMX.google.raw.decoder", "audio/raw");
+
+#ifdef QCOM_HARDWARE
+        Vector<AString> QcomAACQuirks;
+        QcomAACQuirks.push(AString("requires-allocate-on-input-ports"));
+        QcomAACQuirks.push(AString("requires-allocate-on-output-ports"));
+        ExtendedUtils::helper_addMediaCodec(mCodecInfos, mTypes, false, "OMX.qcom.audio.decoder.multiaac",
+            "audio/mp4a-latm", ExtendedUtils::helper_getCodecSpecificQuirks(mCodecQuirks, QcomAACQuirks));
+#endif
     }
 
 #if 0
@@ -509,7 +520,8 @@ status_t MediaCodecList::getSupportedTypes(
 status_t MediaCodecList::getCodecCapabilities(
         size_t index, const char *type,
         Vector<ProfileLevel> *profileLevels,
-        Vector<uint32_t> *colorFormats) const {
+        Vector<uint32_t> *colorFormats,
+        uint32_t *flags) const {
     profileLevels->clear();
     colorFormats->clear();
 
@@ -546,6 +558,8 @@ status_t MediaCodecList::getCodecCapabilities(
     for (size_t i = 0; i < caps.mColorFormats.size(); ++i) {
         colorFormats->push(caps.mColorFormats.itemAt(i));
     }
+
+    *flags = caps.mFlags;
 
     return OK;
 }

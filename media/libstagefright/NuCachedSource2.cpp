@@ -194,8 +194,7 @@ NuCachedSource2::NuCachedSource2(
       mHighwaterThresholdBytes(kDefaultHighWaterThreshold),
       mLowwaterThresholdBytes(kDefaultLowWaterThreshold),
       mKeepAliveIntervalUs(kDefaultKeepAliveIntervalUs),
-      mDisconnectAtHighwatermark(disconnectAtHighwatermark),
-      mIsDownloadComplete(false) {
+      mDisconnectAtHighwatermark(disconnectAtHighwatermark) {
     // We are NOT going to support disconnect-at-highwatermark indefinitely
     // and we are not guaranteeing support for client-specified cache
     // parameters. Both of these are temporary measures to solve a specific
@@ -354,7 +353,6 @@ void NuCachedSource2::onFetch() {
     if (mFinalStatus != OK && mNumRetriesLeft == 0) {
         ALOGV("EOS reached, done prefetching for now");
         mFetching = false;
-        mIsDownloadComplete = true;
     }
 
     bool keepAlive =
@@ -397,11 +395,7 @@ void NuCachedSource2::onFetch() {
             delayUs = 0;
         }
     } else {
-        if(mIsDownloadComplete) {
-            return;
-        } else {
-            delayUs = 100000ll;
-        }
+        delayUs = 100000ll;
     }
 
     (new AMessage(kWhatFetchMore, mReflector->id()))->post(delayUs);
@@ -548,10 +542,6 @@ ssize_t NuCachedSource2::readInternal(off64_t offset, void *data, size_t size) {
                 false, // ignoreLowWaterThreshold
                 true); // force
     }
-    if (mFetching && mIsDownloadComplete) {
-        mIsDownloadComplete = false;
-        (new AMessage(kWhatFetchMore, mReflector->id()))->post();
-    }
 
     if (offset < mCacheOffset
             || offset >= (off64_t)(mCacheOffset + mCache->totalSize())) {
@@ -620,10 +610,6 @@ void NuCachedSource2::resumeFetchingIfNecessary() {
     Mutex::Autolock autoLock(mLock);
 
     restartPrefetcherIfNecessary_l(true /* ignore low water threshold */);
-    if(mFetching && mIsDownloadComplete) {
-        mIsDownloadComplete = false;
-        (new AMessage(kWhatFetchMore, mReflector->id()))->post();
-    }
 }
 
 sp<DecryptHandle> NuCachedSource2::DrmInitialization(const char* mime) {

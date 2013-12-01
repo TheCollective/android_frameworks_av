@@ -123,8 +123,6 @@ enum {
 
     kKeyValidSamples      = 'valD',  // int32_t
 
-    kKeyEditOffset        = 'edof',  // bool (int64_t)
-
     kKeyIsUnreadable      = 'unre',  // bool (int32_t)
 
     // An indication that a video buffer has been rendered.
@@ -166,7 +164,9 @@ enum {
     kKeyCryptoDefaultIVSize = 'cryS',  // int32_t
 
     kKeyPssh              = 'pssh',  // raw data
+#ifdef QCOM_HARDWARE
     kKeyTunnelException   = 'Ntnl', // not tunnel
+#endif
 };
 
 enum {

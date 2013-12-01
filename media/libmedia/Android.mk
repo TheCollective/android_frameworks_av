@@ -9,6 +9,7 @@ LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_STATIC_LIBRARY)
 
+ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:= AudioParameter.cpp
@@ -17,6 +18,7 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES := libutils libcutils
 
 include $(BUILD_SHARED_LIBRARY)
+endif
 
 include $(CLEAR_VARS)
 
@@ -62,7 +64,8 @@ LOCAL_SRC_FILES:= \
     Visualizer.cpp \
     MemoryLeakTrackUtil.cpp \
     SoundPool.cpp \
-    SoundPoolThread.cpp
+    SoundPoolThread.cpp \
+    StringArray.cpp
 
 LOCAL_SRC_FILES += ../libnbaio/roundup.c
 
@@ -79,22 +82,13 @@ ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
 LOCAL_SRC_FILES += \
     IDirectTrack.cpp \
     IDirectTrackClient.cpp
-
-ifneq ($(filter caf bfam,$(TARGET_QCOM_AUDIO_VARIANT)),)
-ifeq ($(BOARD_USES_ALSA_AUDIO),true)
-    LOCAL_CFLAGS += -DQCOM_VOIP_ENABLED
-else
-ifeq ($(BOARD_QCOM_VOIP_ENABLED),true)
-    LOCAL_CFLAGS += -DQCOM_VOIP_ENABLED
-endif
-endif
-endif
 endif
 
 # for <cutils/atomic-inline.h>
 LOCAL_CFLAGS += -DANDROID_SMP=$(if $(findstring true,$(TARGET_CPU_SMP)),1,0)
 LOCAL_SRC_FILES += SingleStateQueue.cpp
 LOCAL_CFLAGS += -DSINGLE_STATE_QUEUE_INSTANTIATIONS='"SingleStateQueueInstantiations.cpp"'
+# Consider a separate a library for SingleStateQueueInstantiations.
 
 LOCAL_SHARED_LIBRARIES := \
 	libui liblog libcutils libutils libbinder libsonivox libicuuc libexpat \

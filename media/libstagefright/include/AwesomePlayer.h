@@ -1,7 +1,7 @@
 /*
- * Copyright (C) 2009 The Android Open Source Project
  * Copyright (c) 2013, The Linux Foundation. All rights reserved.
  * Not a Contribution.
+ * Copyright (C) 2009 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@
 #include <media/stagefright/DataSource.h>
 #include <media/stagefright/OMXClient.h>
 #include <media/stagefright/TimeSource.h>
+#include <media/stagefright/MetaData.h>
 #include <utils/threads.h>
 #include <drm/DrmManagerClient.h>
 
@@ -102,11 +103,9 @@ struct AwesomePlayer {
 
     void postAudioEOS(int64_t delayUs = 0ll);
     void postAudioSeekComplete();
+    void postAudioTearDown();
     void printFileName(int fd);
     status_t dump(int fd, const Vector<String16> &args) const;
-
-    status_t suspend();
-    status_t resume();
 
 private:
     friend struct AwesomeEvent;
@@ -173,9 +172,12 @@ private:
     sp<AwesomeRenderer> mVideoRenderer;
     bool mVideoRenderingStarted;
     bool mVideoRendererIsPreview;
+    int32_t mMediaRenderingStartGeneration;
+    int32_t mStartGeneration;
 
     ssize_t mActiveAudioTrackIndex;
     sp<MediaSource> mAudioTrack;
+    sp<MediaSource> mOmxSource;
     sp<MediaSource> mAudioSource;
     AudioPlayer *mAudioPlayer;
     int64_t mDurationUs;
@@ -205,10 +207,7 @@ private:
 
     bool mWatchForAudioSeekComplete;
     bool mWatchForAudioEOS;
-
-    bool mIsFirstFrameAfterResume;
-
-#ifdef QCOM_HARDWARE
+#ifdef QCOM_ENHANCED_AUDIO
     static int mTunnelAliveAP;
 #endif
 
@@ -222,7 +221,8 @@ private:
     bool mAudioStatusEventPending;
     sp<TimedEventQueue::Event> mVideoLagEvent;
     bool mVideoLagEventPending;
-
+    sp<TimedEventQueue::Event> mAudioTearDownEvent;
+    bool mAudioTearDownEventPending;
     sp<TimedEventQueue::Event> mAsyncPrepareEvent;
     Condition mPreparedCondition;
     bool mIsAsyncPrepare;
@@ -234,6 +234,8 @@ private:
     void postStreamDoneEvent_l(status_t status);
     void postCheckAudioStatusEvent(int64_t delayUs);
     void postVideoLagEvent_l();
+    void postAudioTearDownEvent(int64_t delayUs);
+
     status_t play_l();
 
     MediaBuffer *mVideoBuffer;
@@ -269,6 +271,7 @@ private:
     void setAudioSource(sp<MediaSource> source);
     status_t initAudioDecoder();
 
+
     void setVideoSource(sp<MediaSource> source);
     status_t initVideoDecoder(uint32_t flags = 0);
 
@@ -285,6 +288,9 @@ private:
     void abortPrepare(status_t err);
     void finishAsyncPrepare_l();
     void onVideoLagUpdate();
+    void onAudioTearDownEvent();
+
+    void beginPrepareAsync_l();
 
     bool getCachedDuration_l(int64_t *durationUs, bool *eos);
 
@@ -297,6 +303,8 @@ private:
     void finishSeekIfNecessary(int64_t videoTimeUs);
     void ensureCacheIsFetching_l();
 
+    void notifyIfMediaStarted_l();
+    void createAudioPlayer_l();
     status_t startAudioPlayer_l(bool sendErrorNotification = true);
 
     void shutdownVideoDecoder_l();
@@ -312,7 +320,7 @@ private:
         ASSIGN
     };
     void modifyFlags(unsigned value, FlagMode mode);
-#ifdef USE_TUNNEL_MODE
+#ifdef QCOM_ENHANCED_AUDIO
     void checkTunnelExceptions();
 #endif
     void logFirstFrame();
@@ -322,6 +330,7 @@ private:
     void printStats();
     int64_t getTimeOfDayUs();
     bool mStatistics;
+    int64_t mLateAVSyncMargin;
 
     struct TrackStat {
         String8 mMIME;
@@ -366,7 +375,10 @@ private:
         int64_t mSeekDelayStartUs;
     } mStats;
 
-    bool mBufferingDone;
+    bool    mOffloadAudio;
+    bool    mAudioTearDown;
+    bool    mAudioTearDownWasPlaying;
+    int64_t mAudioTearDownPosition;
 
     status_t setVideoScalingMode(int32_t mode);
     status_t setVideoScalingMode_l(int32_t mode);
@@ -380,10 +392,8 @@ private:
 
     size_t countTracks() const;
 
-#ifdef QCOM_HARDWARE
-#ifdef USE_TUNNEL_MODE
+#ifdef QCOM_ENHANCED_AUDIO
     bool inSupportedTunnelFormats(const char * mime);
-#endif
     //Flag to check if tunnel mode audio is enabled
     bool mIsTunnelAudio;
 #endif

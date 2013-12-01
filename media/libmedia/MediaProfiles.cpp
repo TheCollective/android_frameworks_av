@@ -1,6 +1,4 @@
 /*
-** Copyright (c) 2013, The Linux Foundation. All rights reserved.
-** Not a Contribution.
 **
 ** Copyright 2010, The Android Open Source Project
 **
@@ -48,7 +46,9 @@ const MediaProfiles::NameToTagMap MediaProfiles::sAudioEncoderNameMap[] = {
     {"aac",    AUDIO_ENCODER_AAC},
     {"heaac",  AUDIO_ENCODER_HE_AAC},
     {"aaceld", AUDIO_ENCODER_AAC_ELD},
-    {"lpcm",  AUDIO_ENCODER_LPCM},
+#ifdef QCOM_HARDWARE
+    {"lpcm",  AUDIO_ENCODER_LPCM}
+#endif
 };
 
 const MediaProfiles::NameToTagMap MediaProfiles::sFileFormatMap[] = {
@@ -76,9 +76,11 @@ const MediaProfiles::NameToTagMap MediaProfiles::sCamcorderQualityNameMap[] = {
     {"fwvga", CAMCORDER_QUALITY_FWVGA},
     {"wvga", CAMCORDER_QUALITY_WVGA},
     {"vga", CAMCORDER_QUALITY_VGA},
-    {"wqvga",CAMCORDER_QUALITY_WQVGA},
-    {"4kuhd",CAMCORDER_QUALITY_4kUHD},
-    {"4kdci",CAMCORDER_QUALITY_4kDCI},
+    {"wqvga", CAMCORDER_QUALITY_WQVGA},
+#ifdef QCOM_HARDWARE
+    {"4kuhd", CAMCORDER_QUALITY_4kUHD},
+    {"4kdci", CAMCORDER_QUALITY_4kDCI},
+#endif
 
     {"timelapselow",  CAMCORDER_QUALITY_TIME_LAPSE_LOW},
     {"timelapsehigh", CAMCORDER_QUALITY_TIME_LAPSE_HIGH},
@@ -88,10 +90,12 @@ const MediaProfiles::NameToTagMap MediaProfiles::sCamcorderQualityNameMap[] = {
     {"timelapse720p", CAMCORDER_QUALITY_TIME_LAPSE_720P},
     {"timelapse1080p", CAMCORDER_QUALITY_TIME_LAPSE_1080P},
     {"timelapseqvga", CAMCORDER_QUALITY_TIME_LAPSE_QVGA},
+#ifdef QCOM_HARDWARE
     {"timelapsevga", CAMCORDER_QUALITY_TIME_LAPSE_VGA},
     {"timelapsewvga", CAMCORDER_QUALITY_TIME_LAPSE_WVGA},
     {"timelapsefwvga", CAMCORDER_QUALITY_TIME_LAPSE_FWVGA},
     {"timelapsewqvga", CAMCORDER_QUALITY_TIME_LAPSE_WQVGA},
+#endif
 };
 
 /*static*/ void
@@ -813,8 +817,10 @@ MediaProfiles::createDefaultCamcorderProfiles(MediaProfiles *profiles)
 MediaProfiles::createDefaultAudioEncoders(MediaProfiles *profiles)
 {
     profiles->mAudioEncoders.add(createDefaultAmrNBEncoderCap());
+#ifdef QCOM_HARDWARE
     profiles->mAudioEncoders.add(createDefaultAacEncoderCap());
     profiles->mAudioEncoders.add(createDefaultLpcmEncoderCap());
+#endif
 }
 
 /*static*/ void
@@ -848,20 +854,20 @@ MediaProfiles::createDefaultAmrNBEncoderCap()
     return new MediaProfiles::AudioEncoderCap(
         AUDIO_ENCODER_AMR_NB, 5525, 12200, 8000, 8000, 1, 1);
 }
-
+#ifdef QCOM_HARDWARE
 /*static*/ MediaProfiles::AudioEncoderCap*
 MediaProfiles::createDefaultAacEncoderCap()
 {
     return new MediaProfiles::AudioEncoderCap(
         AUDIO_ENCODER_AAC, 64000, 156000, 8000, 48000, 1, 2);
 }
-
 /*static*/ MediaProfiles::AudioEncoderCap*
 MediaProfiles::createDefaultLpcmEncoderCap()
 {
     return new MediaProfiles::AudioEncoderCap(
         AUDIO_ENCODER_LPCM, 768000, 4608000, 48000, 48000, 1, 6);
 }
+#endif
 
 /*static*/ void
 MediaProfiles::createDefaultImageEncodingQualityLevels(MediaProfiles *profiles)

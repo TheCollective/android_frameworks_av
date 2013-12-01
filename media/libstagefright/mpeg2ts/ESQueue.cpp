@@ -505,17 +505,12 @@ int64_t ElementaryStreamQueue::fetchTimestamp(size_t size) {
         if (first) {
             timeUs = info->mTimestampUs;
             if(mMode != AAC) {
-               first = false;
+                first = false;
             }
         }
 
         if (info->mLength > size) {
             info->mLength -= size;
-
-            if (first) {
-                info->mTimestampUs = -1;
-            }
-
             size = 0;
         } else {
             size -= info->mLength;
@@ -524,7 +519,6 @@ int64_t ElementaryStreamQueue::fetchTimestamp(size_t size) {
             info = NULL;
         }
 
-        first = false;
     }
 
     if (timeUs == 0ll) {

@@ -1,7 +1,7 @@
 /*
- * Copyright (C) 2009 The Android Open Source Project
- * Copyright (c) 2009-2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2009-2012, The Linux Foundation. All rights reserved.
  * Not a Contribution.
+ * Copyright (C) 2009 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ public:
     virtual status_t start(bool sourceAlreadyStarted = false);
 
     virtual void pause(bool playPendingSamples = false);
-    virtual void resume();
+    virtual status_t resume();
 
     // Returns the timestamp of the last buffer played (in us).
     virtual int64_t getMediaTimeUs();
@@ -145,7 +145,8 @@ private:
 
     static size_t AudioSinkCallback(
         MediaPlayerBase::AudioSink *audioSink,
-        void *data, size_t size, void *me);
+        void *data, size_t size, void *me,
+        MediaPlayerBase::AudioSink::cb_event_t event);
 
     int64_t getTimeStamp();
 

@@ -39,6 +39,7 @@ public:
 
             void        destroy();
 
+            void        invalidate();
             // clear the buffer overflow flag
             void        clearOverflow() { mOverflow = false; }
             // set the buffer overflow flag and return previous value
@@ -59,5 +60,9 @@ private:
                                    int64_t pts = kInvalidPTS);
     // releaseBuffer() not overridden
 
+#ifdef QCOM_HARDWARE
+    track_flags_t       mFlags;
+#endif
     bool                mOverflow;  // overflow on most recent attempt to fill client buffer
+    AudioRecordServerProxy* mAudioRecordServerProxy;
 };

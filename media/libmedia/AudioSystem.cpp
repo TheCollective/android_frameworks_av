@@ -20,6 +20,7 @@
 #include <utils/Log.h>
 #include <binder/IServiceManager.h>
 #include <media/AudioSystem.h>
+#include <media/IAudioFlinger.h>
 #include <media/IAudioPolicyService.h>
 #include <math.h>
 
@@ -73,6 +74,14 @@ const sp<IAudioFlinger>& AudioSystem::get_audio_flinger()
     ALOGE_IF(gAudioFlinger==0, "no AudioFlinger!?");
 
     return gAudioFlinger;
+}
+
+/* static */ status_t AudioSystem::checkAudioFlinger()
+{
+    if (defaultServiceManager()->checkService(String16("media.audio_flinger")) != 0) {
+        return NO_ERROR;
+    }
+    return DEAD_OBJECT;
 }
 
 status_t AudioSystem::muteMicrophone(bool state) {
@@ -307,6 +316,11 @@ status_t AudioSystem::getLatency(audio_io_handle_t output,
                                  audio_stream_type_t streamType,
                                  uint32_t* latency)
 {
+#ifdef QCOM_HARDWARE
+    const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
+    if (af == 0) return PERMISSION_DENIED;
+    *latency = af->latency(output);
+#else
     OutputDescriptor *outputDesc;
 
     gLock.lock();
@@ -320,6 +334,7 @@ status_t AudioSystem::getLatency(audio_io_handle_t output,
         *latency = outputDesc->latency;
         gLock.unlock();
     }
+#endif
 
     ALOGV("getLatency() streamType %d, output %d, latency %d", streamType, output, *latency);
 
@@ -361,8 +376,8 @@ status_t AudioSystem::setVoiceVolume(float value)
     return af->setVoiceVolume(value);
 }
 
-status_t AudioSystem::getRenderPosition(size_t *halFrames, size_t *dspFrames,
-        audio_stream_type_t stream)
+status_t AudioSystem::getRenderPosition(audio_io_handle_t output, size_t *halFrames,
+                                        size_t *dspFrames, audio_stream_type_t stream)
 {
     const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
     if (af == 0) return PERMISSION_DENIED;
@@ -371,7 +386,11 @@ status_t AudioSystem::getRenderPosition(size_t *halFrames, size_t *dspFrames,
         stream = AUDIO_STREAM_MUSIC;
     }
 
-    return af->getRenderPosition(halFrames, dspFrames, getOutput(stream));
+    if (output == 0) {
+        output = getOutput(stream);
+    }
+
+    return af->getRenderPosition(halFrames, dspFrames, output);
 }
 
 size_t AudioSystem::getInputFramesLost(audio_io_handle_t ioHandle) {
@@ -403,15 +422,6 @@ void AudioSystem::releaseAudioSessionId(int audioSession) {
         af->releaseAudioSessionId(audioSession);
     }
 }
-
-#ifdef QCOM_FM_ENABLED
-status_t AudioSystem::setFmVolume(float value)
-{
-    const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
-    if (af == 0) return PERMISSION_DENIED;
-    return af->setFmVolume(value);
-}
-#endif
 
 // ---------------------------------------------------------------------------
 
@@ -451,14 +461,14 @@ void AudioSystem::AudioFlingerClient::ioConfigChanged(int event, audio_io_handle
 
         OutputDescriptor *outputDesc =  new OutputDescriptor(*desc);
         gOutputs.add(ioHandle, outputDesc);
-        ALOGV("ioConfigChanged() new output samplingRate %u, format %d channels %#x frameCount %u "
+        ALOGV("ioConfigChanged() new output samplingRate %u, format %d channel mask %#x frameCount %u "
                 "latency %d",
-                outputDesc->samplingRate, outputDesc->format, outputDesc->channels,
+                outputDesc->samplingRate, outputDesc->format, outputDesc->channelMask,
                 outputDesc->frameCount, outputDesc->latency);
         } break;
     case OUTPUT_CLOSED: {
         if (gOutputs.indexOfKey(ioHandle) < 0) {
-            ALOGW("ioConfigChanged() closing unknow output! %d", ioHandle);
+            ALOGW("ioConfigChanged() closing unknown output! %d", ioHandle);
             break;
         }
         ALOGV("ioConfigChanged() output %d closed", ioHandle);
@@ -469,16 +479,16 @@ void AudioSystem::AudioFlingerClient::ioConfigChanged(int event, audio_io_handle
     case OUTPUT_CONFIG_CHANGED: {
         int index = gOutputs.indexOfKey(ioHandle);
         if (index < 0) {
-            ALOGW("ioConfigChanged() modifying unknow output! %d", ioHandle);
+            ALOGW("ioConfigChanged() modifying unknown output! %d", ioHandle);
             break;
         }
         if (param2 == NULL) break;
         desc = (const OutputDescriptor *)param2;
 
-        ALOGV("ioConfigChanged() new config for output %d samplingRate %u, format %d channels %#x "
+        ALOGV("ioConfigChanged() new config for output %d samplingRate %u, format %d channel mask %#x "
                 "frameCount %d latency %d",
                 ioHandle, desc->samplingRate, desc->format,
-                desc->channels, desc->frameCount, desc->latency);
+                desc->channelMask, desc->frameCount, desc->latency);
         OutputDescriptor *outputDesc = gOutputs.valueAt(index);
         delete outputDesc;
         outputDesc =  new OutputDescriptor(*desc);
@@ -541,6 +551,8 @@ const sp<IAudioPolicyService>& AudioSystem::get_audio_policy_service()
     return gAudioPolicyService;
 }
 
+// ---------------------------------------------------------------------------
+
 status_t AudioSystem::setDeviceConnectionState(audio_devices_t device,
                                                audio_policy_dev_state_t state,
                                                const char *device_address)
@@ -600,11 +612,12 @@ audio_io_handle_t AudioSystem::getOutput(audio_stream_type_t stream,
                                     uint32_t samplingRate,
                                     audio_format_t format,
                                     audio_channel_mask_t channelMask,
-                                    audio_output_flags_t flags)
+                                    audio_output_flags_t flags,
+                                    const audio_offload_info_t *offloadInfo)
 {
     const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
     if (aps == 0) return 0;
-    return aps->getOutput(stream, samplingRate, format, channelMask, flags);
+    return aps->getOutput(stream, samplingRate, format, channelMask, flags, offloadInfo);
 }
 
 extern "C" audio_io_handle_t _ZN7android11AudioSystem9getOutputE19audio_stream_type_tjjj27audio_policy_output_flags_t(audio_stream_type_t stream,
@@ -787,11 +800,26 @@ size_t AudioSystem::getPrimaryOutputFrameCount()
     return af->getPrimaryOutputFrameCount();
 }
 
+status_t AudioSystem::setLowRamDevice(bool isLowRamDevice)
+{
+    const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
+    if (af == 0) return PERMISSION_DENIED;
+    return af->setLowRamDevice(isLowRamDevice);
+}
+
 void AudioSystem::clearAudioConfigCache()
 {
     Mutex::Autolock _l(gLock);
     ALOGV("clearAudioConfigCache()");
     gOutputs.clear();
+}
+
+bool AudioSystem::isOffloadSupported(const audio_offload_info_t& info)
+{
+    ALOGV("isOffloadSupported()");
+    const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
+    if (aps == 0) return false;
+    return aps->isOffloadSupported(info);
 }
 
 // ---------------------------------------------------------------------------
