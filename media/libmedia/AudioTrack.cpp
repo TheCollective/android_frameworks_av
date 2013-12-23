@@ -1062,8 +1062,7 @@ status_t AudioTrack::createTrack_l(
             // Same comment as below about ignoring frameCount parameter for set()
             frameCount = sharedBuffer->size();
         } else if (frameCount == 0) {
-            frameCount = afFrameCount * 2;
-            ALOGV("Offload: new frameCount = %d", frameCount);
+            frameCount = afFrameCount;
         }
         if (mNotificationFramesAct != frameCount) {
             mNotificationFramesAct = frameCount;
